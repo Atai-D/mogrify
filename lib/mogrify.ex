@@ -23,7 +23,12 @@ defmodule Mogrify do
   * `:path` - The output path of the image. Defaults to a temporary file.
   * `:in_place` - Overwrite the original image, ignoring `:path` option. Default `false`.
   """
-  def save(image, opts \\ []) do
+    def save2(image, opts \\ []) do
+    save(image, opts, true)
+  end
+
+
+  def save(image, opts \\ [], hui \\ false) do
     cmd_opts = [stderr_to_stdout: true]
 
     if opts[:in_place] do
@@ -40,7 +45,12 @@ defmodule Mogrify do
       create_folder_if_doesnt_exist!(final_output_path)
 
       args = arguments_for_saving(image, cmd_output_path)
-      {_, 0} = cmd_convert(args, cmd_opts)
+
+      {_, 0} = if hui do
+        cmd_magick2(:magick, args, cmd_opts)
+      else
+        cmd_convert(args, cmd_opts)
+      end
 
       # final output path may differ if temporary path was used for image format
       if cmd_output_path != final_output_path do
@@ -437,8 +447,27 @@ defmodule Mogrify do
     end
   end
 
+  defp cmd_magick2(tool, args, opts) do
+    {command, additional_args} = command_options(tool)
+    [rgb | rest] = args
+    [png | rest] = Enum.reverse(rest)
+    System.cmd(command, Enum.reverse(rest) ++ [rgb, png], opts)
+  rescue
+    e in [ErlangError] ->
+      if e.original == :enoent do
+        raise "missing prerequisite: '#{tool}'"
+      else
+        reraise e, __STACKTRACE__
+      end
+  end
+
   defp cmd_magick(tool, args, opts) do
     {command, additional_args} = command_options(tool)
+    additional_args = if Enum.join(additional_args) == "" do
+      []
+    else
+      additional_args
+    end
     System.cmd(command, additional_args ++ args, opts)
   rescue
     e in [ErlangError] ->
